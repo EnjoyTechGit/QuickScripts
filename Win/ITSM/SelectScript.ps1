@@ -1,4 +1,4 @@
-# SelectScript.ps1 - Direct Markdown Table Parser
+# SelectScript.ps1 - Array-Enforced Markdown Table Parser
 $githubUser   = "EnjoyTechGit"
 $repoName     = "QuickScripts"
 $branch       = "main"
@@ -11,14 +11,14 @@ try {
     Write-Host "Fetching script index from README.md..." -ForegroundColor Cyan
     $readmeText = Invoke-RestMethod -Uri $readmeUrl -Headers @{ "User-Agent" = "PowerShell" } -ErrorAction Stop
 
-    # Extract all raw script URLs directly from the 'irm "..."' blocks in the table
+    # Extract all raw script URLs directly from the table
     $urlPattern = 'https://raw\.githubusercontent\.com/[^\s"''<>]+\.ps1'
-    $scriptUrls = [regex]::Matches($readmeText, $urlPattern) | ForEach-Object { $_.Value } | Select-Object -Unique
-
-    # Filter out menu/selector scripts if present
-    $scriptUrls = $scriptUrls | Where-Object { 
+    
+    # FORCE ARRAY CASTING with @(...) so 1 item stays an array and doesn't split into characters
+    $matches = [regex]::Matches($readmeText, $urlPattern) | ForEach-Object { $_.Value }
+    $scriptUrls = @($matches | Select-Object -Unique | Where-Object { 
         $_ -notlike "*SelectScript.ps1*" -and $_ -notlike "*Menu.ps1*" 
-    }
+    })
 
 } catch {
     Write-Host "Failed to read README.md: $_" -ForegroundColor Red

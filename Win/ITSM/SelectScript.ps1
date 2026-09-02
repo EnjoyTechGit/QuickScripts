@@ -23,7 +23,7 @@ if (-not $items) {
     return
 }
 
-Write-Host "`nAvailable scripts in $folderPath:`n" -ForegroundColor Cyan
+Write-Host ("`nAvailable scripts in {0}:`n" -f $folderPath) -ForegroundColor Cyan
 for ($i = 0; $i -lt $items.Count; $i++) {
     $index = $i + 1
     Write-Host ("[{0}] {1}" -f $index, $items[$i].name)
@@ -53,7 +53,7 @@ while ($true) {
 
 $selectedItem = $items[$selectedIndex]
 $scriptUrl = "$rawBaseUrl/$($selectedItem.name)"
-Write-Host "`nRunning $($selectedItem.name) ..." -ForegroundColor Green
+Write-Host ("`nRunning {0} ..." -f $selectedItem.name) -ForegroundColor Green
 
 try {
     $scriptContent = (Invoke-WebRequest -Uri $scriptUrl -UseBasicParsing).Content

@@ -1,64 +1,59 @@
-# Interactive script launcher for Win/ITSM
-$repoOwner = "EnjoyTechGit"
-$repoName = "QuickScripts"
-$branch = "main"
-$folderPath = "Win/ITSM"
-$excludeFiles = @("SelectScript.ps1", "GenList.ps1")
+function Show-QuickScriptsMenu {
+    Clear-Host
+    $githubUser = "TavisHawkes"
+    $repoName   = "QuickScripts"
+    $branch     = "main"
 
-$apiUrl = "https://api.github.com/repos/$repoOwner/$repoName/contents/$folderPath?ref=$branch"
-$rawBaseUrl = "https://raw.githubusercontent.com/$repoOwner/$repoName/$branch/$folderPath"
-
-try {
-    $items = Invoke-RestMethod -Uri $apiUrl -Headers @{ "User-Agent" = "PowerShell" } |
-        Where-Object { $_.type -eq "file" -and $_.name -like "*.ps1" -and $_.name -notin $excludeFiles } |
-        Sort-Object name
-}
-catch {
-    Write-Error "Unable to load script list from GitHub: $($_.Exception.Message)"
-    return
-}
-
-if (-not $items) {
-    Write-Host "No scripts were found in $folderPath." -ForegroundColor Yellow
-    return
-}
-
-Write-Host ("`nAvailable scripts in {0}:`n" -f $folderPath) -ForegroundColor Cyan
-for ($i = 0; $i -lt $items.Count; $i++) {
-    $index = $i + 1
-    Write-Host ("[{0}] {1}" -f $index, $items[$i].name)
-}
-
-while ($true) {
-    $choice = Read-Host "Select a script number to run (or Q to quit)"
-
-    if ($choice -match '^(q|quit|exit)$') {
-        Write-Host "Script launcher cancelled." -ForegroundColor Yellow
+    # 1. Fetch available .ps1 files via GitHub API
+    $apiUrl = "https://api.github.com/repos/$githubUser/$repoName/git/trees/$branch?recursive=1"
+    
+    try {
+        $repoContent = Invoke-RestMethod -Uri $apiUrl -UserAgent "PowerShell"
+        $scripts = $repoContent.tree | Where-Object { $_.path -like "*.ps1" -and $_.path -notlike "*menu*" }
+    } catch {
+        Write-Host "Failed to fetch repository scripts. Check internet connection or repository privacy." -ForegroundColor Red
         return
     }
 
-    if ($choice -notmatch '^\d+$') {
-        Write-Host "Please enter a valid number." -ForegroundColor Yellow
-        continue
+    if ($scripts.Count -eq 0) {
+        Write-Host "No .ps1 scripts found in repository." -ForegroundColor Yellow
+        return
     }
 
-    $selectedIndex = [int]$choice - 1
-    if ($selectedIndex -lt 0 -or $selectedIndex -ge $items.Count) {
-        Write-Host ("Please choose a number between 1 and {0}." -f $items.Count) -ForegroundColor Yellow
-        continue
+    # 2. Display Selection Menu
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "         QuickScripts Menu              " -ForegroundColor Header
+    Write-Host "========================================`n" -ForegroundColor Cyan
+
+    for ($i = 0; $i -lt $scripts.Count; $i++) {
+        Write-Host ("[{0}] {1}" -f ($i + 1), $scripts[$i].path) -ForegroundColor Yellow
+    }
+    Write-Host "[Q] Quit`n" -ForegroundColor Gray
+
+    # 3. Handle User Input
+    $selection = Read-Host "Select a script number to execute"
+
+    if ($selection -eq 'Q' -or $selection -eq 'q') {
+        return
     }
 
-    break
+    if ($selection -match '^\d+$' -and [int]$selection -le $scripts.Count -and [int]$selection -gt 0) {
+        $selectedScript = $scripts[[int]$selection - 1]
+        $rawUrl = "https://github.com/$githubUser/$repoName/raw/refs/heads/$branch/$($selectedScript.path)"
+        
+        Write-Host "`nDownloading and executing: $($selectedScript.path)..." -ForegroundColor Cyan
+        
+        try {
+            $code = Invoke-RestMethod -Uri $rawUrl -UserAgent "Mozilla/5.0"
+            $sb = [scriptblock]::Create($code)
+            & $sb
+        } catch {
+            Write-Host "Error executing script: $_" -ForegroundColor Red
+        }
+    } else {
+        Write-Host "Invalid selection." -ForegroundColor Red
+    }
 }
 
-$selectedItem = $items[$selectedIndex]
-$scriptUrl = "$rawBaseUrl/$($selectedItem.name)"
-Write-Host ("`nRunning {0} ..." -f $selectedItem.name) -ForegroundColor Green
-
-try {
-    $scriptContent = (Invoke-WebRequest -Uri $scriptUrl -UseBasicParsing).Content
-    Invoke-Expression $scriptContent
-}
-catch {
-    Write-Error "Failed to run $($selectedItem.name): $($_.Exception.Message)"
-}
+# Run the menu
+Show-QuickScriptsMenu

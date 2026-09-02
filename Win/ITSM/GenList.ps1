@@ -5,7 +5,7 @@ $branch      = "main"
 $folderPath  = "Win/ITSM" # Target folder within the repo
 
 # Paths
-$rawBaseUrl  = "https://github.com/$githubUser/$repoName/raw/refs/heads/$branch/$folderPath"
+$rawBaseUrl  = "https://raw.githubusercontent.com/$githubUser/$repoName/$branch/$folderPath"
 $localDir    = $PSScriptRoot
 $outputFile  = Join-Path $localDir "README.md"
 

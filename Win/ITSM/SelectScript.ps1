@@ -1,31 +1,37 @@
-# SelectScript.ps1 - Array-Enforced Markdown Table Parser
+# SelectScript.ps1 - Strictly Typed Array Parser
 $githubUser   = "EnjoyTechGit"
 $repoName     = "QuickScripts"
 $branch       = "main"
 $targetFolder = "Win/ITSM"
 
-# Fetch raw README.md
 $readmeUrl = "https://raw.githubusercontent.com/$githubUser/$repoName/$branch/$targetFolder/README.md"
 
 try {
     Write-Host "Fetching script index from README.md..." -ForegroundColor Cyan
     $readmeText = Invoke-RestMethod -Uri $readmeUrl -Headers @{ "User-Agent" = "PowerShell" } -ErrorAction Stop
 
-    # Extract all raw script URLs directly from the table
+    # Regex targeting raw GitHub URLs ending in .ps1
     $urlPattern = 'https://raw\.githubusercontent\.com/[^\s"''<>]+\.ps1'
-    
-    # FORCE ARRAY CASTING with @(...) so 1 item stays an array and doesn't split into characters
-    $matches = [regex]::Matches($readmeText, $urlPattern) | ForEach-Object { $_.Value }
-    $scriptUrls = @($matches | Select-Object -Unique | Where-Object { 
-        $_ -notlike "*SelectScript.ps1*" -and $_ -notlike "*Menu.ps1*" 
-    })
+    $matches = [regex]::Matches($readmeText, $urlPattern)
+
+    # Use a strongly-typed List to enforce string storage
+    $scriptUrls = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($match in $matches) {
+        $url = $match.Value
+        if ($url -notlike "*SelectScript.ps1*" -and $url -notlike "*Menu.ps1*") {
+            if (-not $scriptUrls.Contains($url)) {
+                $scriptUrls.Add($url)
+            }
+        }
+    }
 
 } catch {
     Write-Host "Failed to read README.md: $_" -ForegroundColor Red
     return
 }
 
-if (-not $scriptUrls -or $scriptUrls.Count -eq 0) {
+if ($scriptUrls.Count -eq 0) {
     Write-Host "No runnable .ps1 scripts found listed in README.md." -ForegroundColor Yellow
     return
 }
@@ -37,9 +43,8 @@ do {
     Write-Host "      QuickScripts Menu ($targetFolder)  " -ForegroundColor Green
     Write-Host "========================================`n" -ForegroundColor Cyan
 
-    # Display short file name extracted from the URL
     for ($i = 0; $i -lt $scriptUrls.Count; $i++) {
-        $fileName = Split-Path $scriptUrls[$i] -Leaf
+        $fileName = Split-Path -Path $scriptUrls[$i] -Leaf
         Write-Host (" [{0}] {1}" -f ($i + 1), $fileName) -ForegroundColor Yellow
     }
     Write-Host "`n [Q] Quit`n" -ForegroundColor Gray
@@ -49,8 +54,9 @@ do {
     if ($selection -eq 'Q' -or $selection -eq 'q') { break }
 
     if ($selection -match '^\d+$' -and [int]$selection -le $scriptUrls.Count -and [int]$selection -gt 0) {
-        $selectedUrl  = $scriptUrls[[int]$selection - 1]
-        $selectedName = Split-Path $selectedUrl -Leaf
+        $selectedIndex = [int]$selection - 1
+        $selectedUrl   = $scriptUrls[$selectedIndex]
+        $selectedName  = Split-Path -Path $selectedUrl -Leaf
         
         Write-Host "`nFetching and running: $selectedName..." -ForegroundColor Cyan
         

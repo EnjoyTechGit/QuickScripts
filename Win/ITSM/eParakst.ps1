@@ -37,10 +37,10 @@ if ($oldVersion) {
 }
 
 # InFlight
-Write-Host "Checking for Latest eParakst..." -ForegroundColor Cyan
+Write-Host "Checking WinGet repository for eParakst..." -ForegroundColor Cyan
 $wingetCheck = & $wingetExe show -e --id eParaksts.eParakstitajs --accept-source-agreements 2>&1 | Out-String
 
-# Cabin Service
+# Service refreshments
 if (-not $oldVersion) {
     Write-Host "Proceeding with initial installation of eParaksts.eParakstitajs..." -ForegroundColor Yellow
     & $wingetExe install -e --id eParaksts.eParakstitajs --silent --accept-package-agreements --accept-source-agreements
@@ -57,7 +57,7 @@ $newApp = Get-ItemProperty -Path $regPaths -ErrorAction SilentlyContinue |
 $newVersion = if ($newApp) { $newApp.DisplayVersion } else { $null }
 
 # End Of The Line
-Write-Host "`n========================================" -ForegroundColor Header
+Write-Host "`n========================================" -ForegroundColor Gray
 if (-not $oldVersion -and $newVersion) {
     Write-Host "SUCCESS: Installed eParakst v$newVersion complete." -ForegroundColor Green
 } elseif ($oldVersion -and $newVersion -and ([version]$newVersion -gt [version]$oldVersion)) {

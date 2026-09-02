@@ -1,31 +1,32 @@
-# SelectScript.ps1 - Fixed README.md Parser
+# SelectScript.ps1 - Direct Markdown Table Parser
 $githubUser   = "EnjoyTechGit"
 $repoName     = "QuickScripts"
 $branch       = "main"
 $targetFolder = "Win/ITSM"
 
-$readmeUrl = "https://github.com/$githubUser/$repoName/raw/refs/heads/$branch/$targetFolder/README.md"
+# Fetch raw README.md
+$readmeUrl = "https://raw.githubusercontent.com/$githubUser/$repoName/$branch/$targetFolder/README.md"
 
 try {
     Write-Host "Fetching script index from README.md..." -ForegroundColor Cyan
-    $readmeText = Invoke-RestMethod -Uri $readmeUrl -Headers @{ "User-Agent" = "Mozilla/5.0" } -ErrorAction Stop
+    $readmeText = Invoke-RestMethod -Uri $readmeUrl -Headers @{ "User-Agent" = "PowerShell" } -ErrorAction Stop
 
-    # Matches valid .ps1 filenames (e.g. eParakst.ps1) ignoring partial matches
-    $pattern = '(?i)\b([a-z0-9_\-]+\.ps1)\b'
-    $matches = [regex]::Matches($readmeText, $pattern) | ForEach-Object { $_.Groups[1].Value }
-    
-    # Filter out menu scripts, self-references, and duplicates
-    $scriptNames = $matches | Where-Object { 
+    # Extract all raw script URLs directly from the 'irm "..."' blocks in the table
+    $urlPattern = 'https://raw\.githubusercontent\.com/[^\s"''<>]+\.ps1'
+    $scriptUrls = [regex]::Matches($readmeText, $urlPattern) | ForEach-Object { $_.Value } | Select-Object -Unique
+
+    # Filter out menu/selector scripts if present
+    $scriptUrls = $scriptUrls | Where-Object { 
         $_ -notlike "*SelectScript.ps1*" -and $_ -notlike "*Menu.ps1*" 
-    } | Select-Object -Unique
+    }
 
 } catch {
     Write-Host "Failed to read README.md: $_" -ForegroundColor Red
     return
 }
 
-if (-not $scriptNames -or $scriptNames.Count -eq 0) {
-    Write-Host "No valid .ps1 scripts found listed in README.md." -ForegroundColor Yellow
+if (-not $scriptUrls -or $scriptUrls.Count -eq 0) {
+    Write-Host "No runnable .ps1 scripts found listed in README.md." -ForegroundColor Yellow
     return
 }
 
@@ -36,8 +37,10 @@ do {
     Write-Host "      QuickScripts Menu ($targetFolder)  " -ForegroundColor Green
     Write-Host "========================================`n" -ForegroundColor Cyan
 
-    for ($i = 0; $i -lt $scriptNames.Count; $i++) {
-        Write-Host (" [{0}] {1}" -f ($i + 1), $scriptNames[$i]) -ForegroundColor Yellow
+    # Display short file name extracted from the URL
+    for ($i = 0; $i -lt $scriptUrls.Count; $i++) {
+        $fileName = Split-Path $scriptUrls[$i] -Leaf
+        Write-Host (" [{0}] {1}" -f ($i + 1), $fileName) -ForegroundColor Yellow
     }
     Write-Host "`n [Q] Quit`n" -ForegroundColor Gray
 
@@ -45,15 +48,14 @@ do {
 
     if ($selection -eq 'Q' -or $selection -eq 'q') { break }
 
-    if ($selection -match '^\d+$' -and [int]$selection -le $scriptNames.Count -and [int]$selection -gt 0) {
-        $selectedScript = $scriptNames[[int]$selection - 1]
-        $rawScriptUrl = "https://github.com/$githubUser/$repoName/raw/refs/heads/$branch/$targetFolder/$selectedScript"
+    if ($selection -match '^\d+$' -and [int]$selection -le $scriptUrls.Count -and [int]$selection -gt 0) {
+        $selectedUrl  = $scriptUrls[[int]$selection - 1]
+        $selectedName = Split-Path $selectedUrl -Leaf
         
-        Write-Host "`nFetching and running: $selectedScript..." -ForegroundColor Cyan
+        Write-Host "`nFetching and running: $selectedName..." -ForegroundColor Cyan
         
         try {
-            # Execute in a discrete ScriptBlock so child scripts don't exit the menu session
-            $code = Invoke-RestMethod -Uri $rawScriptUrl -Headers @{ "User-Agent" = "Mozilla/5.0" } -ErrorAction Stop
+            $code = Invoke-RestMethod -Uri $selectedUrl -Headers @{ "User-Agent" = "PowerShell" } -ErrorAction Stop
             $sb = [scriptblock]::Create($code)
             & $sb
         } catch {

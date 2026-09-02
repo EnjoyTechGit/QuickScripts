@@ -6,11 +6,11 @@ $folderPath  = "Win/ITSM" # Target folder within the repo
 
 # Paths
 $rawBaseUrl  = "https://github.com/$githubUser/$repoName/raw/refs/heads/$branch/$folderPath"
-$localDir    = Join-Path $PSScriptRoot $folderPath
+$localDir    = $PSScriptRoot
 $outputFile  = Join-Path $localDir "README.md"
 
 # Generate Markdown Content
-$md = @"r
+$md = @"
 # Command List: $folderPath
 
 Copy and paste any of the commands below directly into an elevated PowerShell prompt to execute the script in-memory.
@@ -19,17 +19,22 @@ Copy and paste any of the commands below directly into an elevated PowerShell pr
 | :--- | :--- | :--- |
 "@
 
-Get-ChildItem -Path $localDir -Filter "*.ps1" | ForEach-Object {
-    $fileName = $_.Name
-    $rawUrl   = "$rawBaseUrl/$fileName"
-    
-    # Extract the first comment line starting with '#' as the description (falls back to filename)
-    $firstComment = (Get-Content $_.FullName | Where-Object { $_ -match '^\s*#' -and $_ -notmatch '^\s*#\s*Check In' } | Select-Object -First 1)
-    $description  = if ($firstComment) { $firstComment -replace '^\s*#\s*', '' } else { "PowerShell script $fileName" }
-    
-    # Format the table row
-    $md += "`n| **$fileName** | $description | ``iex (irm `"$rawUrl`")`` |"
-}
+Get-ChildItem -Path $localDir -Filter "*.ps1" |
+    Where-Object { $_.FullName -ne $PSCommandPath } |
+    ForEach-Object {
+        $fileName = $_.Name
+        $rawUrl   = "$rawBaseUrl/$fileName"
+
+        # Extract the first meaningful comment line starting with '#' as the description.
+        # Skip internal stage markers like "Check In" and other section labels.
+        $firstComment = (Get-Content $_.FullName | Where-Object {
+                $_ -match '^\s*#\s*(?!Check In\b|Boarding\b|InFlight\b|Service refreshments\b|Landing\b|End Of The Line\b).+'
+            } | Select-Object -First 1)
+        $description = if ($firstComment) { ($firstComment -replace '^\s*#\s*', '').Trim() } else { "PowerShell script $fileName" }
+
+        # Format the table row
+        $md += "`n| **$fileName** | $description | ``iex (irm `"$rawUrl`")`` |"
+    }
 
 # Output README.md
 $md | Out-File -FilePath $outputFile -Encoding utf8 -Force

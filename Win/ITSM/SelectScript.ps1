@@ -1,33 +1,42 @@
-# SelectScript.ps1 - Deep Crawl (No API, Searches All Subfolders)
+# SelectScript.ps1 - Commit Tree Engine (No API Limits, Full Subfolder Scan)
 $githubUser = "EnjoyTechGit"
 $repoName   = "QuickScripts"
 $branch     = "main"
 
-# GitHub's directory tree payload (recursively lists ALL files in ALL folders)
-$treePayloadUrl = "https://github.com/$githubUser/$repoName/tree-list/$branch"
+# GitHub's lightweight raw commit metadata endpoint
+$commitUrl = "https://github.com/$githubUser/$repoName/file-list/$branch"
 
 try {
-    Write-Host "Scanning repository and all subfolders for scripts..." -ForegroundColor Cyan
+    Write-Host "Scanning repository and subfolders for scripts..." -ForegroundColor Cyan
     
-    # Request JSON payload directly from GitHub web server
-    $response = Invoke-RestMethod -Uri $treePayloadUrl -Headers @{ 
-        "User-Agent" = "Mozilla/5.0"
+    # Request the full directory file manifest
+    $manifest = Invoke-RestMethod -Uri $commitUrl -Headers @{ 
+        "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         "Accept"     = "application/json"
     } -ErrorAction Stop
 
-    # Extract all .ps1 paths, excluding menu scripts
-    $scriptPaths = $response.paths | Where-Object { 
+    # Filter all nested .ps1 files, ignoring menu scripts
+    $scriptPaths = $manifest | Where-Object { 
         $_ -like "*.ps1" -and 
         $_ -notlike "*SelectScript.ps1*" -and 
         $_ -notlike "*Menu.ps1*" 
     }
 } catch {
-    Write-Host "Failed to scan repository: $_" -ForegroundColor Red
-    return
+    # Failover: Direct search against the HTML commit tree
+    try {
+        $html = Invoke-RestMethod -Uri "https://github.com/$githubUser/$repoName/find/$branch" -Headers @{ "User-Agent" = "Mozilla/5.0" }
+        $pattern = '"path":"([^"]+\.ps1)"'
+        $scriptPaths = [regex]::Matches($html, $pattern) | ForEach-Object { $_.Groups[1].Value } | Where-Object {
+            $_ -notlike "*SelectScript.ps1*" -and $_ -notlike "*Menu.ps1*"
+        } | Select-Object -Unique
+    } catch {
+        Write-Host "Failed to scan repository: $_" -ForegroundColor Red
+        return
+    }
 }
 
 if (-not $scriptPaths -or $scriptPaths.Count -eq 0) {
-    Write-Host "No runnable .ps1 scripts found in any subfolders." -ForegroundColor Yellow
+    Write-Host "No runnable .ps1 scripts found in any subfolder." -ForegroundColor Yellow
     return
 }
 

@@ -1,42 +1,33 @@
-# SelectScript.ps1 - Commit Tree Engine (No API Limits, Full Subfolder Scan)
-$githubUser = "EnjoyTechGit"
-$repoName   = "QuickScripts"
-$branch     = "main"
+# SelectScript.ps1 - Scoped Folder Scanner (Win/ITSM Focus)
+$githubUser  = "EnjoyTechGit"
+$repoName    = "QuickScripts"
+$branch      = "main"
+$targetFolder = "Win/ITSM"  # Targeted directory path
 
-# GitHub's lightweight raw commit metadata endpoint
-$commitUrl = "https://github.com/$githubUser/$repoName/file-list/$branch"
+$findUrl = "https://github.com/$githubUser/$repoName/find/$branch"
 
 try {
-    Write-Host "Scanning repository and subfolders for scripts..." -ForegroundColor Cyan
+    Write-Host "Scanning https://github.com/$githubUser/$repoName/tree/$branch/$targetFolder for scripts..." -ForegroundColor Cyan
     
-    # Request the full directory file manifest
-    $manifest = Invoke-RestMethod -Uri $commitUrl -Headers @{ 
-        "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        "Accept"     = "application/json"
-    } -ErrorAction Stop
+    # Download GitHub's file finder index page
+    $html = Invoke-RestMethod -Uri $findUrl -Headers @{ "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" } -ErrorAction Stop
+    
+    # Extract paths strictly matching targetFolder AND ending in .ps1
+    $pattern = '"path":"(' + [regex]::Escape($targetFolder) + '/[^"]+\.ps1)"'
+    
+    $scriptPaths = [regex]::Matches($html, $pattern) | ForEach-Object { 
+        $_.Groups[1].Value 
+    } | Where-Object { 
+        $_ -notlike "*SelectScript.ps1*" -and $_ -notlike "*Menu.ps1*" 
+    } | Select-Object -Unique
 
-    # Filter all nested .ps1 files, ignoring menu scripts
-    $scriptPaths = $manifest | Where-Object { 
-        $_ -like "*.ps1" -and 
-        $_ -notlike "*SelectScript.ps1*" -and 
-        $_ -notlike "*Menu.ps1*" 
-    }
 } catch {
-    # Failover: Direct search against the HTML commit tree
-    try {
-        $html = Invoke-RestMethod -Uri "https://github.com/$githubUser/$repoName/find/$branch" -Headers @{ "User-Agent" = "Mozilla/5.0" }
-        $pattern = '"path":"([^"]+\.ps1)"'
-        $scriptPaths = [regex]::Matches($html, $pattern) | ForEach-Object { $_.Groups[1].Value } | Where-Object {
-            $_ -notlike "*SelectScript.ps1*" -and $_ -notlike "*Menu.ps1*"
-        } | Select-Object -Unique
-    } catch {
-        Write-Host "Failed to scan repository: $_" -ForegroundColor Red
-        return
-    }
+    Write-Host "Failed to scan folder: $_" -ForegroundColor Red
+    return
 }
 
 if (-not $scriptPaths -or $scriptPaths.Count -eq 0) {
-    Write-Host "No runnable .ps1 scripts found in any subfolder." -ForegroundColor Yellow
+    Write-Host "No runnable .ps1 scripts found in $targetFolder." -ForegroundColor Yellow
     return
 }
 
@@ -44,11 +35,13 @@ if (-not $scriptPaths -or $scriptPaths.Count -eq 0) {
 do {
     Clear-Host
     Write-Host "========================================" -ForegroundColor Cyan
-    Write-Host "         QuickScripts Menu              " -ForegroundColor Green
+    Write-Host "      QuickScripts Menu ($targetFolder)  " -ForegroundColor Green
     Write-Host "========================================`n" -ForegroundColor Cyan
 
     for ($i = 0; $i -lt $scriptPaths.Count; $i++) {
-        Write-Host (" [{0}] {1}" -f ($i + 1), $scriptPaths[$i]) -ForegroundColor Yellow
+        # Display short script name alongside full path
+        $scriptName = Split-Path $scriptPaths[$i] -Leaf
+        Write-Host (" [{0}] {1}  ({2})" -f ($i + 1), $scriptName, $scriptPaths[$i]) -ForegroundColor Yellow
     }
     Write-Host "`n [Q] Quit`n" -ForegroundColor Gray
 

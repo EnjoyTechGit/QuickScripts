@@ -1,36 +1,37 @@
-# SelectScript.ps1 - Pure Web-Scraping Version (No API, No Hardcoding)
+# SelectScript.ps1 - Deep Crawl (No API, Searches All Subfolders)
 $githubUser = "EnjoyTechGit"
 $repoName   = "QuickScripts"
 $branch     = "main"
 
-# 1. Fetch the main repo page HTML directly
-$repoWebUrl = "https://github.com/$githubUser/$repoName/tree/$branch"
+# GitHub's directory tree payload (recursively lists ALL files in ALL folders)
+$treePayloadUrl = "https://github.com/$githubUser/$repoName/tree-list/$branch"
 
 try {
-    Write-Host "Scanning repository for scripts..." -ForegroundColor Cyan
-    $webContent = Invoke-RestMethod -Uri $repoWebUrl -Headers @{ "User-Agent" = "Mozilla/5.0" } -ErrorAction Stop
+    Write-Host "Scanning repository and all subfolders for scripts..." -ForegroundColor Cyan
+    
+    # Request JSON payload directly from GitHub web server
+    $response = Invoke-RestMethod -Uri $treePayloadUrl -Headers @{ 
+        "User-Agent" = "Mozilla/5.0"
+        "Accept"     = "application/json"
+    } -ErrorAction Stop
 
-    # 2. Extract relative .ps1 file paths using regex matching from the HTML
-    $pattern = "($githubUser/$repoName/blob/$branch/.*?\.ps1)"
-    $matches = [regex]::Matches($webContent, $pattern) | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique
-
-    # 3. Clean up paths and filter out menu scripts
-    $scriptPaths = $matches | ForEach-Object {
-        $_ -replace "^$githubUser/$repoName/blob/$branch/", ""
-    } | Where-Object { 
-        $_ -notlike "*SelectScript.ps1*" -and $_ -notlike "*Menu.ps1*" 
+    # Extract all .ps1 paths, excluding menu scripts
+    $scriptPaths = $response.paths | Where-Object { 
+        $_ -like "*.ps1" -and 
+        $_ -notlike "*SelectScript.ps1*" -and 
+        $_ -notlike "*Menu.ps1*" 
     }
 } catch {
-    Write-Host "Failed to scrape repository content: $_" -ForegroundColor Red
+    Write-Host "Failed to scan repository: $_" -ForegroundColor Red
     return
 }
 
 if (-not $scriptPaths -or $scriptPaths.Count -eq 0) {
-    Write-Host "No runnable .ps1 scripts found in repository." -ForegroundColor Yellow
+    Write-Host "No runnable .ps1 scripts found in any subfolders." -ForegroundColor Yellow
     return
 }
 
-# 4. Interactive Menu Loop
+# Interactive Menu Loop
 do {
     Clear-Host
     Write-Host "========================================" -ForegroundColor Cyan

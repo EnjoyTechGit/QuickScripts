@@ -1,28 +1,38 @@
 # SelectScript.ps1 - Scoped Folder Scanner (Win/ITSM Focus)
-$githubUser  = "EnjoyTechGit"
-$repoName    = "QuickScripts"
-$branch      = "main"
-$targetFolder = "Win/ITSM"  # Targeted directory path
+$githubUser   = "EnjoyTechGit"
+$repoName     = "QuickScripts"
+$branch       = "main"
+$targetFolder = "Win/ITSM"
 
-$findUrl = "https://github.com/$githubUser/$repoName/find/$branch"
+$treeUrl = "https://github.com/$githubUser/$repoName/tree-list/$branch"
+$webUrl  = "https://github.com/$githubUser/$repoName/tree/$branch/$targetFolder"
 
 try {
-    Write-Host "Scanning https://github.com/$githubUser/$repoName/tree/$branch/$targetFolder for scripts..." -ForegroundColor Cyan
+    Write-Host "Scanning $targetFolder for scripts..." -ForegroundColor Cyan
     
-    # Download GitHub's file finder index page
-    $html = Invoke-RestMethod -Uri $findUrl -Headers @{ "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" } -ErrorAction Stop
-    
-    # Extract paths strictly matching targetFolder AND ending in .ps1
-    $pattern = '"path":"(' + [regex]::Escape($targetFolder) + '/[^"]+\.ps1)"'
-    
-    $scriptPaths = [regex]::Matches($html, $pattern) | ForEach-Object { 
-        $_.Groups[1].Value 
-    } | Where-Object { 
-        $_ -notlike "*SelectScript.ps1*" -and $_ -notlike "*Menu.ps1*" 
+    # Attempt 1: Fetch via internal tree-list payload
+    $response = Invoke-RestMethod -Uri $treeUrl -Headers @{ 
+        "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        "Accept"     = "application/json"
+    } -ErrorAction SilentlyContinue
+
+    if ($response.paths) {
+        $allPaths = $response.paths
+    } else {
+        # Attempt 2: Direct web page scrape parsing embedded JSON state
+        $html = Invoke-RestMethod -Uri $webUrl -Headers @{ "User-Agent" = "Mozilla/5.0" } -ErrorAction Stop
+        $allPaths = [regex]::Matches($html, '"path":"([^"]+\.ps1)"') | ForEach-Object { $_.Groups[1].Value }
+    }
+
+    # Filter strictly for target folder and .ps1 extensions
+    $scriptPaths = $allPaths | Where-Object { 
+        $_ -like "$targetFolder/*.ps1" -and 
+        $_ -notlike "*SelectScript.ps1*" -and 
+        $_ -notlike "*Menu.ps1*" 
     } | Select-Object -Unique
 
 } catch {
-    Write-Host "Failed to scan folder: $_" -ForegroundColor Red
+    Write-Host "Failed to scan directory: $_" -ForegroundColor Red
     return
 }
 
@@ -39,9 +49,8 @@ do {
     Write-Host "========================================`n" -ForegroundColor Cyan
 
     for ($i = 0; $i -lt $scriptPaths.Count; $i++) {
-        # Display short script name alongside full path
         $scriptName = Split-Path $scriptPaths[$i] -Leaf
-        Write-Host (" [{0}] {1}  ({2})" -f ($i + 1), $scriptName, $scriptPaths[$i]) -ForegroundColor Yellow
+        Write-Host (" [{0}] {1}" -f ($i + 1), $scriptName) -ForegroundColor Yellow
     }
     Write-Host "`n [Q] Quit`n" -ForegroundColor Gray
 

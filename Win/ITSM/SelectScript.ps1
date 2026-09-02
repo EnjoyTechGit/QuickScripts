@@ -1,43 +1,32 @@
-# SelectScript.ps1 - Scoped Folder Scanner (Win/ITSM Focus)
+# SelectScript.ps1 - Parsed directly from README.md
 $githubUser   = "EnjoyTechGit"
 $repoName     = "QuickScripts"
 $branch       = "main"
 $targetFolder = "Win/ITSM"
 
-$treeUrl = "https://github.com/$githubUser/$repoName/tree-list/$branch"
-$webUrl  = "https://github.com/$githubUser/$repoName/tree/$branch/$targetFolder"
+# Direct URL to the raw README.md
+$readmeUrl = "https://github.com/$githubUser/$repoName/raw/refs/heads/main/$targetFolder/README.md"
 
 try {
-    Write-Host "Scanning $targetFolder for scripts..." -ForegroundColor Cyan
+    Write-Host "Fetching script index from README.md..." -ForegroundColor Cyan
+    $readmeText = Invoke-RestMethod -Uri $readmeUrl -Headers @{ "User-Agent" = "Mozilla/5.0" } -ErrorAction Stop
+
+    # Regex extracts any .ps1 filenames mentioned in the markdown document
+    $pattern = '([a-zA-Z0-9_\-]+\.ps1)'
+    $matches = [regex]::Matches($readmeText, $pattern) | ForEach-Object { $_.Groups[1].Value }
     
-    # Attempt 1: Fetch via internal tree-list payload
-    $response = Invoke-RestMethod -Uri $treeUrl -Headers @{ 
-        "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        "Accept"     = "application/json"
-    } -ErrorAction SilentlyContinue
-
-    if ($response.paths) {
-        $allPaths = $response.paths
-    } else {
-        # Attempt 2: Direct web page scrape parsing embedded JSON state
-        $html = Invoke-RestMethod -Uri $webUrl -Headers @{ "User-Agent" = "Mozilla/5.0" } -ErrorAction Stop
-        $allPaths = [regex]::Matches($html, '"path":"([^"]+\.ps1)"') | ForEach-Object { $_.Groups[1].Value }
-    }
-
-    # Filter strictly for target folder and .ps1 extensions
-    $scriptPaths = $allPaths | Where-Object { 
-        $_ -like "$targetFolder/*.ps1" -and 
-        $_ -notlike "*SelectScript.ps1*" -and 
-        $_ -notlike "*Menu.ps1*" 
+    # Filter out menu/select scripts and remove duplicates
+    $scriptNames = $matches | Where-Object { 
+        $_ -notlike "*SelectScript.ps1*" -and $_ -notlike "*Menu.ps1*" 
     } | Select-Object -Unique
 
 } catch {
-    Write-Host "Failed to scan directory: $_" -ForegroundColor Red
+    Write-Host "Failed to read README.md: $_" -ForegroundColor Red
     return
 }
 
-if (-not $scriptPaths -or $scriptPaths.Count -eq 0) {
-    Write-Host "No runnable .ps1 scripts found in $targetFolder." -ForegroundColor Yellow
+if (-not $scriptNames -or $scriptNames.Count -eq 0) {
+    Write-Host "No runnable .ps1 scripts found listed in README.md." -ForegroundColor Yellow
     return
 }
 
@@ -48,9 +37,8 @@ do {
     Write-Host "      QuickScripts Menu ($targetFolder)  " -ForegroundColor Green
     Write-Host "========================================`n" -ForegroundColor Cyan
 
-    for ($i = 0; $i -lt $scriptPaths.Count; $i++) {
-        $scriptName = Split-Path $scriptPaths[$i] -Leaf
-        Write-Host (" [{0}] {1}" -f ($i + 1), $scriptName) -ForegroundColor Yellow
+    for ($i = 0; $i -lt $scriptNames.Count; $i++) {
+        Write-Host (" [{0}] {1}" -f ($i + 1), $scriptNames[$i]) -ForegroundColor Yellow
     }
     Write-Host "`n [Q] Quit`n" -ForegroundColor Gray
 
@@ -58,14 +46,14 @@ do {
 
     if ($selection -eq 'Q' -or $selection -eq 'q') { break }
 
-    if ($selection -match '^\d+$' -and [int]$selection -le $scriptPaths.Count -and [int]$selection -gt 0) {
-        $relativePath = $scriptPaths[[int]$selection - 1]
-        $rawUrl = "https://raw.githubusercontent.com/$githubUser/$repoName/$branch/$relativePath"
+    if ($selection -match '^\d+$' -and [int]$selection -le $scriptNames.Count -and [int]$selection -gt 0) {
+        $selectedScript = $scriptNames[[int]$selection - 1]
+        $rawScriptUrl = "https://github.com/$githubUser/$repoName/raw/refs/heads/$branch/$targetFolder/$selectedScript"
         
-        Write-Host "`nFetching and running: $relativePath..." -ForegroundColor Cyan
+        Write-Host "`nFetching and running: $selectedScript..." -ForegroundColor Cyan
         
         try {
-            $code = Invoke-RestMethod -Uri $rawUrl -Headers @{ "User-Agent" = "Mozilla/5.0" } -ErrorAction Stop
+            $code = Invoke-RestMethod -Uri $rawScriptUrl -Headers @{ "User-Agent" = "Mozilla/5.0" } -ErrorAction Stop
             $sb = [scriptblock]::Create($code)
             & $sb
         } catch {

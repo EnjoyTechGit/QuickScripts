@@ -1,21 +1,20 @@
-# SelectScript.ps1 - Parsed directly from README.md
+# SelectScript.ps1 - Fixed README.md Parser
 $githubUser   = "EnjoyTechGit"
 $repoName     = "QuickScripts"
 $branch       = "main"
 $targetFolder = "Win/ITSM"
 
-# Direct URL to the raw README.md
-$readmeUrl = "https://github.com/$githubUser/$repoName/raw/refs/heads/main/$targetFolder/README.md"
+$readmeUrl = "https://github.com/$githubUser/$repoName/raw/refs/heads/$branch/$targetFolder/README.md"
 
 try {
     Write-Host "Fetching script index from README.md..." -ForegroundColor Cyan
     $readmeText = Invoke-RestMethod -Uri $readmeUrl -Headers @{ "User-Agent" = "Mozilla/5.0" } -ErrorAction Stop
 
-    # Regex extracts any .ps1 filenames mentioned in the markdown document
-    $pattern = '([a-zA-Z0-9_\-]+\.ps1)'
+    # Matches valid .ps1 filenames (e.g. eParakst.ps1) ignoring partial matches
+    $pattern = '(?i)\b([a-z0-9_\-]+\.ps1)\b'
     $matches = [regex]::Matches($readmeText, $pattern) | ForEach-Object { $_.Groups[1].Value }
     
-    # Filter out menu/select scripts and remove duplicates
+    # Filter out menu scripts, self-references, and duplicates
     $scriptNames = $matches | Where-Object { 
         $_ -notlike "*SelectScript.ps1*" -and $_ -notlike "*Menu.ps1*" 
     } | Select-Object -Unique
@@ -26,7 +25,7 @@ try {
 }
 
 if (-not $scriptNames -or $scriptNames.Count -eq 0) {
-    Write-Host "No runnable .ps1 scripts found listed in README.md." -ForegroundColor Yellow
+    Write-Host "No valid .ps1 scripts found listed in README.md." -ForegroundColor Yellow
     return
 }
 
@@ -53,6 +52,7 @@ do {
         Write-Host "`nFetching and running: $selectedScript..." -ForegroundColor Cyan
         
         try {
+            # Execute in a discrete ScriptBlock so child scripts don't exit the menu session
             $code = Invoke-RestMethod -Uri $rawScriptUrl -Headers @{ "User-Agent" = "Mozilla/5.0" } -ErrorAction Stop
             $sb = [scriptblock]::Create($code)
             & $sb

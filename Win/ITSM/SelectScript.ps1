@@ -1,65 +1,59 @@
-# SelectScript.ps1
+# SelectScript.ps1 - Pure Web-Scraping Version (No API, No Hardcoding)
 $githubUser = "EnjoyTechGit"
 $repoName   = "QuickScripts"
 $branch     = "main"
 
-# GitHub REST API Endpoint
-$apiUrl = "https://api.github.com/repos/$githubUser/$repoName/git/trees/$branch?recursive=1"
-
-# Headers are required so GitHub API doesn't throw a 403 Forbidden / User-Agent error
-$headers = @{
-    "User-Agent" = "PowerShell-Script-Runner"
-}
-
-# Add your GitHub PAT here IF the repository is PRIVATE:
-# $headers.Add("Authorization", "token ghp_YourPersonalAccessTokenHere")
+# 1. Fetch the main repo page HTML directly
+$repoWebUrl = "https://github.com/$githubUser/$repoName/tree/$branch"
 
 try {
-    Write-Host "Connecting to repository ($repoName)..." -ForegroundColor Cyan
-    $repoContent = Invoke-RestMethod -Uri $apiUrl -Headers $headers -ErrorAction Stop
-    
-    # Filter for .ps1 files, excluding the selection menu itself
-    $scripts = $repoContent.tree | Where-Object { 
-        $_.path -like "*.ps1" -and $_.path -notlike "*SelectScript.ps1*" -and $_.path -notlike "*Menu.ps1*" 
+    Write-Host "Scanning repository for scripts..." -ForegroundColor Cyan
+    $webContent = Invoke-RestMethod -Uri $repoWebUrl -Headers @{ "User-Agent" = "Mozilla/5.0" } -ErrorAction Stop
+
+    # 2. Extract relative .ps1 file paths using regex matching from the HTML
+    $pattern = "($githubUser/$repoName/blob/$branch/.*?\.ps1)"
+    $matches = [regex]::Matches($webContent, $pattern) | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique
+
+    # 3. Clean up paths and filter out menu scripts
+    $scriptPaths = $matches | ForEach-Object {
+        $_ -replace "^$githubUser/$repoName/blob/$branch/", ""
+    } | Where-Object { 
+        $_ -notlike "*SelectScript.ps1*" -and $_ -notlike "*Menu.ps1*" 
     }
 } catch {
-    Write-Host "Failed to fetch repository scripts." -ForegroundColor Red
-    Write-Host "Details: $_" -ForegroundColor DarkGray
+    Write-Host "Failed to scrape repository content: $_" -ForegroundColor Red
     return
 }
 
-if (-not $scripts -or $scripts.Count -eq 0) {
+if (-not $scriptPaths -or $scriptPaths.Count -eq 0) {
     Write-Host "No runnable .ps1 scripts found in repository." -ForegroundColor Yellow
     return
 }
 
-# Interactive Loop
+# 4. Interactive Menu Loop
 do {
     Clear-Host
     Write-Host "========================================" -ForegroundColor Cyan
     Write-Host "         QuickScripts Menu              " -ForegroundColor Green
     Write-Host "========================================`n" -ForegroundColor Cyan
 
-    for ($i = 0; $i -lt $scripts.Count; $i++) {
-        Write-Host (" [{0}] {1}" -f ($i + 1), $scripts[$i].path) -ForegroundColor Yellow
+    for ($i = 0; $i -lt $scriptPaths.Count; $i++) {
+        Write-Host (" [{0}] {1}" -f ($i + 1), $scriptPaths[$i]) -ForegroundColor Yellow
     }
     Write-Host "`n [Q] Quit`n" -ForegroundColor Gray
 
     $selection = Read-Host "Select a script number to execute"
 
-    if ($selection -eq 'Q' -or $selection -eq 'q') {
-        break
-    }
+    if ($selection -eq 'Q' -or $selection -eq 'q') { break }
 
-    if ($selection -match '^\d+$' -and [int]$selection -le $scripts.Count -and [int]$selection -gt 0) {
-        $selectedScript = $scripts[[int]$selection - 1]
-        $rawUrl = "https://raw.githubusercontent.com/$githubUser/$repoName/$branch/$($selectedScript.path)"
+    if ($selection -match '^\d+$' -and [int]$selection -le $scriptPaths.Count -and [int]$selection -gt 0) {
+        $relativePath = $scriptPaths[[int]$selection - 1]
+        $rawUrl = "https://raw.githubusercontent.com/$githubUser/$repoName/$branch/$relativePath"
         
-        Write-Host "`nFetching and running: $($selectedScript.path)..." -ForegroundColor Cyan
+        Write-Host "`nFetching and running: $relativePath..." -ForegroundColor Cyan
         
         try {
-            # Running via scriptblock prevents child scripts from terminating the main menu execution context
-            $code = Invoke-RestMethod -Uri $rawUrl -Headers $headers -ErrorAction Stop
+            $code = Invoke-RestMethod -Uri $rawUrl -Headers @{ "User-Agent" = "Mozilla/5.0" } -ErrorAction Stop
             $sb = [scriptblock]::Create($code)
             & $sb
         } catch {

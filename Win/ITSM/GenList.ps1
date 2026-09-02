@@ -24,6 +24,8 @@ Get-ChildItem -Path $localDir -Filter "*.ps1" |
     ForEach-Object {
         $fileName = $_.Name
         $rawUrl   = "$rawBaseUrl/$fileName"
+        $commandText = "iex (irm `"$rawUrl`")"
+        $jsCommand = $commandText.Replace("'", "&apos;").Replace('"', '&quot;')
 
         # Extract the first meaningful comment line starting with '#' as the description.
         # Skip internal stage markers like "Check In" and other section labels.
@@ -32,8 +34,8 @@ Get-ChildItem -Path $localDir -Filter "*.ps1" |
             } | Select-Object -First 1)
         $description = if ($firstComment) { ($firstComment -replace '^\s*#\s*', '').Trim() } else { "PowerShell script $fileName" }
 
-        # Format the table row
-        $md += "`n| **$fileName** | $description | ``iex (irm `"$rawUrl`")`` |"
+        # Format the table row with a copy button
+        $md += "`n| **$fileName** | $description | <code>$commandText</code> | <button type=`"button`" onclick=`"navigator.clipboard.writeText('$jsCommand');`">Copy</button> |"
     }
 
 # Output README.md

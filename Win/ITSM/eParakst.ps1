@@ -1,4 +1,14 @@
-# Check In
+# ==============================================================================
+# Script: eParakst.ps1
+# Description: Installs or updates eParakstītājs 3.0 via WinGet with process cleanup
+# ==============================================================================
+
+# 0. Pre-Flight Process Cleanup
+Write-Host "Closing active instances of eParakstītājs..." -ForegroundColor Cyan
+Get-Process -Name "eParakstitajs3", "eParakst*", "eparakst*" -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Seconds 2
+
+# 1. Check In (WinGet Discovery & Fallback)
 $wingetExe = Get-ChildItem -Path "C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
 
 if (-not $wingetExe) {
@@ -18,10 +28,11 @@ if (-not $wingetExe) {
     Write-Host "WinGet is already installed." -ForegroundColor Green
 }
 
-# Boarding
+# 2. Boarding (Current Version Assessment)
 $regPaths = @(
     "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
-    "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
 )
 
 $installedApp = Get-ItemProperty -Path $regPaths -ErrorAction SilentlyContinue | 
@@ -36,11 +47,11 @@ if ($oldVersion) {
     Write-Host "eParakst is not currently installed." -ForegroundColor Yellow
 }
 
-# InFlight
+# 3. InFlight (WinGet Repository Check)
 Write-Host "Checking WinGet repository for eParakst..." -ForegroundColor Cyan
 $wingetCheck = & $wingetExe show -e --id eParaksts.eParakstitajs --accept-source-agreements 2>&1 | Out-String
 
-# Service refreshments
+# 4. Service Refreshments (Install/Upgrade Execution)
 if (-not $oldVersion) {
     Write-Host "Proceeding with initial installation of eParaksts.eParakstitajs..." -ForegroundColor Yellow
     & $wingetExe install -e --id eParaksts.eParakstitajs --silent --accept-package-agreements --accept-source-agreements
@@ -49,15 +60,16 @@ if (-not $oldVersion) {
     & $wingetExe upgrade -e --id eParaksts.eParakstitajs --silent --accept-package-agreements --accept-source-agreements
 }
 
-# Landing
+# 5. Landing (Post-Install Verification)
+Start-Sleep -Seconds 3
 $newApp = Get-ItemProperty -Path $regPaths -ErrorAction SilentlyContinue | 
     Where-Object { $_.DisplayName -like "*eParakst*" } | 
     Select-Object -First 1
 
 $newVersion = if ($newApp) { $newApp.DisplayVersion } else { $null }
 
-# End Of The Line
-Write-Host "`n========================================" -ForegroundColor Gray
+# 6. End Of The Line
+Write-Host "`n========================================" -ForegroundColor Cyan
 if (-not $oldVersion -and $newVersion) {
     Write-Host "SUCCESS: Installed eParakst v$newVersion complete." -ForegroundColor Green
 } elseif ($oldVersion -and $newVersion -and ([version]$newVersion -gt [version]$oldVersion)) {
@@ -67,4 +79,4 @@ if (-not $oldVersion -and $newVersion) {
 } else {
     Write-Host "ERROR: eParakst installation/update failed or version could not be detected." -ForegroundColor Red
 }
-Write-Host "========================================`n"
+Write-Host "========================================`n" -ForegroundColor Cyan
